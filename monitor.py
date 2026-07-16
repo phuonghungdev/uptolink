@@ -18,7 +18,7 @@ import pytesseract
 from PIL import Image
 
 # =================== CONFIG ===================
-UPTOLINK_URL = "https://octolink.vip/Rw9J4NBS"
+UPTOLINK_URL = "https://octolink.vip/RkPSRHS8"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
