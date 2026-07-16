@@ -18,7 +18,7 @@ import pytesseract
 from PIL import Image
 
 # =================== CONFIG ===================
-UPTOLINK_URL = "https://octolink.vip/Rw9J4NBS"
+UPTOLINK_URL = "https://octolink.vip/skfX"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -239,6 +239,47 @@ def check_uptolink(log_fn=None):
     log(f"[*] Kết thúc quét link gốc. Tổng số mã mới: {len(new_codes)}")
     return new_codes
 
+# =================== PHÁT HIỆN CLOUDFLARE CHALLENGE ===================
+CF_TITLE_MARKERS = [
+    "just a moment",
+    "attention required",
+    "checking your browser",
+    "please wait",
+    "verify you are human",
+    "one more step",
+]
+CF_SOURCE_MARKERS = [
+    "cf-turnstile",
+    "cf_chl_opt",
+    "cf-chl-",
+    "challenges.cloudflare.com",
+    "__cf_chl_rt_tk",
+    "cf-please-wait",
+    "cf-browser-verification",
+    "/cdn-cgi/challenge-platform",
+]
+
+def detect_cloudflare_challenge(driver):
+    """Trả về (True, lý_do) nếu trang hiện tại là trang challenge/captcha Cloudflare."""
+    try:
+        title = (driver.title or "").strip().lower()
+        for marker in CF_TITLE_MARKERS:
+            if marker in title:
+                return True, f"title chứa '{marker}' ({driver.title!r})"
+        
+        try:
+            page_source = driver.page_source.lower()
+        except Exception:
+            page_source = ""
+        
+        for marker in CF_SOURCE_MARKERS:
+            if marker in page_source:
+                return True, f"HTML chứa dấu hiệu '{marker}'"
+        
+        return False, None
+    except Exception:
+        return False, None
+
 # =================== KIỂM TRA 1 MÃ ===================
 def check_single_code(code, log_fn=None):
     log = log_fn or print
@@ -295,6 +336,23 @@ def check_single_code(code, log_fn=None):
         else:
             log(f"[-] Chuyển hướng THẤT BẠI -> URL hiện tại: {current_url}")
         
+        # Kiểm tra xem có bị chặn bởi trang captcha/challenge Cloudflare không
+        is_cf, cf_reason = detect_cloudflare_challenge(driver)
+        if is_cf:
+            log(f"[!] ⚠️ Phát hiện trang CAPTCHA/CHALLENGE Cloudflare ({cf_reason})")
+            log(f"[*] Đang đợi thử xem Cloudflare có tự vượt qua không (tối đa 8s)...")
+            cf_wait_start = time.time()
+            while time.time() - cf_wait_start < 8:
+                time.sleep(1)
+                still_cf, still_reason = detect_cloudflare_challenge(driver)
+                if not still_cf:
+                    log(f"[+] Cloudflare đã tự vượt qua, trang hiện tại: {driver.current_url}")
+                    is_cf = False
+                    break
+            if is_cf:
+                log(f"[-] ❌ Vẫn còn kẹt ở CAPTCHA Cloudflare sau khi đợi -> mã {code} khả năng KHÔNG lấy được nút "
+                    f"(cần giải captcha thủ công, script không tự vượt captcha)")
+        
         log(f"[*] Đang tìm text/label VƯỢT MÃ (timeout {STEP1_TIMEOUT}s)...")
         start_time = time.time()
         
@@ -344,7 +402,8 @@ def check_single_code(code, log_fn=None):
             existing.add(code)
             save_codes(existing)
         else:
-            log(f"[-] ⏱️ Mã {code}: hết {STEP1_TIMEOUT}s không thấy nút, bỏ qua")
+            reason_suffix = " (nguyên nhân: kẹt captcha Cloudflare)" if is_cf else ""
+            log(f"[-] ⏱️ Mã {code}: hết {STEP1_TIMEOUT}s không thấy nút, bỏ qua{reason_suffix}")
         
         try:
             driver.close()
