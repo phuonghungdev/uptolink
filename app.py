@@ -13,7 +13,7 @@ from monitor import (
 
 # =================== CONFIG ===================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8703732480:AAE060Uo9Jq7zyIiLEEePlleLv2AqTCbJ4Y")
-BASE_URL = os.getenv("BASE_URL", "https://extraordinary-tenderness-production-8ea9.up.railway.app")
+BASE_URL = os.getenv("BASE_URL", "https://uptolink-production.up.railway.app/")
 
 app = Flask(__name__, static_folder='frontend', static_url_path='')
 CORS(app)
