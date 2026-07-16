@@ -12,8 +12,8 @@ from monitor import (
 )
 
 # =================== CONFIG ===================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8703732480:AAE060Uo9Jq7zyIiLEEePlleLv2AqTCbJ4Y")
-BASE_URL = os.getenv("BASE_URL", "https://uptolink-production.up.railway.app/")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8983631020:AAHitwdCI9SyIeTqR2Ukr50Ng_V84JmcE7U")
+BASE_URL = os.getenv("BASE_URL", "https://extraordinary-tenderness-production-8ea9.up.railway.app")
 
 app = Flask(__name__, static_folder='frontend', static_url_path='')
 CORS(app)
@@ -36,6 +36,14 @@ pending_users = []
 check_counter = 0
 log_messages = []
 
+def log(msg):
+    """Ghi log vừa ra console vừa lưu vào log_messages để hiển thị trên Mini App."""
+    print(msg, flush=True)
+    log_messages.append(msg)
+    # Giới hạn để tránh phình bộ nhớ
+    if len(log_messages) > 500:
+        del log_messages[:len(log_messages) - 500]
+
 # =================== API ===================
 @app.route('/api/status', methods=['GET'])
 def get_status():
@@ -47,7 +55,7 @@ def get_status():
         "is_checking": is_checking,
         "last_result": last_result,
         "pending_users": len(pending_users),
-        "logs": log_messages[-30:]
+        "logs": log_messages[-80:]
     })
 
 @app.route('/api/check', methods=['POST'])
@@ -71,13 +79,13 @@ def start_check():
         is_checking = True
         check_counter += 1
         last_result["status"] = "running"
-        log_messages.append(f"[*] BẮT ĐẦU KIỂM TRA PHIÊN {check_counter}")
+        log(f"[*] BẮT ĐẦU KIỂM TRA PHIÊN {check_counter}")
     
     def run_check():
-        global is_checking, last_result, last_check_time, pending_users, log_messages
+        global is_checking, last_result, last_check_time, pending_users
         try:
-            new_codes = check_uptolink()
-            log_messages.append(f"[*] Tìm thấy {len(new_codes)} mã mới")
+            new_codes = check_uptolink(log_fn=log)
+            log(f"[*] Tìm thấy {len(new_codes)} mã mới")
             
             if not new_codes:
                 last_result = {
@@ -92,7 +100,7 @@ def start_check():
                 pending_users = []
                 return
             
-            codes_with, codes_without = check_all_codes(new_codes)
+            codes_with, codes_without = check_all_codes(new_codes, log_fn=log)
             
             last_result = {
                 "new_codes": new_codes,
@@ -108,7 +116,7 @@ def start_check():
             if pending_users:
                 send_telegram_report(new_codes, codes_with, codes_without)
             
-            log_messages.append(f"[*] KẾT THÚC KIỂM TRA PHIÊN {check_counter}")
+            log(f"[*] KẾT THÚC KIỂM TRA PHIÊN {check_counter}")
             
         except Exception as e:
             last_result = {
@@ -119,7 +127,7 @@ def start_check():
                 "message": str(e),
                 "timestamp": datetime.now().isoformat()
             }
-            log_messages.append(f"[!] Lỗi: {e}")
+            log(f"[!] Lỗi: {e}")
         finally:
             is_checking = False
             pending_users = []
