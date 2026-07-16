@@ -1,0 +1,8 @@
+Flask
+flask-cors
+pyTelegramBotAPI
+selenium
+pytesseract
+Pillow
+requests
+gunicorn

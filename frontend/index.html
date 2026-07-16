@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>UptoLink Monitor</title>
+    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-card: rgba(20, 30, 50, 0.85);
+            --bg-input: rgba(15, 25, 45, 0.9);
+            --text-primary: #e8f0fe;
+            --text-secondary: #8899bb;
+            --accent: #4fc3f7;
+            --success: #4caf50;
+            --danger: #f44336;
+            --warning: #ff9800;
+            --border: rgba(79, 195, 247, 0.12);
+            --radius: 16px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .app {
+            max-width: 480px;
+            width: 100%;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 18px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+        }
+        .header { text-align: center; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .header h1 { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, #4fc3f7, #0288d1); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .header .sub { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+        .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+        .stat-card { background: var(--bg-input); border-radius: 12px; padding: 12px 6px; text-align: center; border: 1px solid var(--border); }
+        .stat-card .num { font-size: 1.5rem; font-weight: 700; color: var(--accent); line-height: 1.2; }
+        .stat-card .num.success { color: var(--success); }
+        .stat-card .num.danger { color: var(--danger); }
+        .stat-card .num.warning { color: var(--warning); }
+        .stat-card .label { font-size: 0.6rem; color: var(--text-secondary); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn-primary {
+            width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 0.95rem; font-weight: 600;
+            cursor: pointer; background: linear-gradient(135deg, #0288d1, #029ae4); color: white;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary:active { transform: scale(0.97); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary .spinner { display: none; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .btn-primary.loading .spinner { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn-secondary {
+            width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 0.85rem;
+            font-weight: 500; cursor: pointer; background: transparent; color: var(--text-secondary);
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
+        }
+        .btn-secondary:hover { background: rgba(79, 195, 247, 0.06); border-color: rgba(79, 195, 247, 0.25); color: var(--text-primary); }
+        .log-area {
+            background: var(--bg-input); border-radius: 12px; padding: 12px 14px; max-height: 150px; overflow-y: auto;
+            font-family: 'SF Mono', 'Courier New', monospace; font-size: 0.7rem; color: #8899bb;
+            border: 1px solid var(--border); margin: 12px 0; white-space: pre-wrap; line-height: 1.6;
+        }
+        .log-area .hl { color: var(--accent); }
+        .log-area .ok { color: var(--success); }
+        .log-area .err { color: var(--danger); }
+        .log-area .warn { color: var(--warning); }
+        .log-area .dim { color: var(--text-secondary); }
+        .code-section { margin-top: 12px; }
+        .code-section .title { font-size: 0.78rem; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .code-tag {
+            display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem;
+            margin: 3px 4px 3px 0; border: 1px solid var(--border); background: var(--bg-input);
+        }
+        .code-tag.has { border-color: var(--success); color: var(--success); background: rgba(76, 175, 80, 0.08); }
+        .code-tag.no { border-color: var(--danger); color: var(--danger); background: rgba(244, 67, 54, 0.08); }
+        .meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: var(--text-secondary); margin: 6px 0 10px; }
+        .status-badge { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status-badge.idle { background: rgba(144, 164, 174, 0.12); color: var(--text-secondary); }
+        .status-badge.running { background: rgba(79, 195, 247, 0.15); color: var(--accent); animation: pulse 1.8s infinite; }
+        .status-badge.done { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+        .status-badge.error { background: rgba(244, 67, 54, 0.15); color: var(--danger); }
+        .status-badge.nocodes { background: rgba(255, 152, 0, 0.15); color: var(--warning); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .footer { text-align: center; font-size: 0.6rem; color: var(--text-secondary); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .queue-badge { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.6rem; background: rgba(255, 152, 0, 0.12); color: var(--warning); margin-left: 4px; }
+        @media (max-width: 400px) { .status-grid { gap: 5px; } .stat-card .num { font-size: 1.2rem; } .header h1 { font-size: 1.3rem; } .app { padding: 12px; } .log-area { max-height: 110px; } }
+        @media (min-width: 768px) { .app { max-width: 560px; padding: 24px; } .header h1 { font-size: 2rem; } .stat-card .num { font-size: 1.8rem; } }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+    <div class="header">
+        <h1>🚀 UptoLink</h1>
+        <div class="sub">Monitor &bull; Tự động tìm mã &bull; OCR</div>
+    </div>
+    <div class="status-grid">
+        <div class="stat-card"><div class="num" id="statUsers">0</div><div class="label">👥 Người dùng</div></div>
+        <div class="stat-card"><div class="num" id="statCodes">0</div><div class="label">📋 Mã đã lưu</div></div>
+        <div class="stat-card"><div class="num" id="statStatus">●</div><div class="label" id="statusLabel">Sẵn sàng</div></div>
+    </div>
+    <button class="btn-primary" id="checkBtn" onclick="startCheck()">
+        <span class="spinner"></span>
+        <span id="btnText">🔄 Kiểm tra ngay</span>
+    </button>
+    <button class="btn-secondary" onclick="fetchStatus()"><span>⟳</span> Làm mới trạng thái</button>
+    <div class="meta">
+        <span id="statusDetail">🟢 Sẵn sàng</span>
+        <span id="lastUpdate">--</span>
+    </div>
+    <div class="log-area" id="logArea">[*] Bot đã sẵn sàng.\n📌 Nhấn "Kiểm tra ngay" để bắt đầu.</div>
+    <div class="code-section">
+        <div class="title">📋 Mã đã phát hiện</div>
+        <div id="codeContainer"><span class="dim" style="font-size:0.75rem;">Chưa có mã</span></div>
+    </div>
+    <div class="footer">⚡ Dữ liệu thực · Selenium + OCR · Telegram Mini App</div>
+</div>
+<script>
+    const API_BASE = window.location.origin;
+    let isChecking = false;
+    let logLines = [];
+    let statusInterval = null;
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
+    const statUsers = document.getElementById('statUsers');
+    const statCodes = document.getElementById('statCodes');
+    const statStatus = document.getElementById('statStatus');
+    const statusLabel = document.getElementById('statusLabel');
+    const statusDetail = document.getElementById('statusDetail');
+    const lastUpdate = document.getElementById('lastUpdate');
+    const logArea = document.getElementById('logArea');
+    const codeContainer = document.getElementById('codeContainer');
+    const checkBtn = document.getElementById('checkBtn');
+    const btnText = document.getElementById('btnText');
+
+    function addLog(text, type = '') {
+        const ts = new Date().toLocaleTimeString('vi-VN');
+        const cls = type === 'ok' ? 'ok' : type === 'err' ? 'err' : type === 'warn' ? 'warn' : 'hl';
+        logLines.push(`[${ts}] ${text}`);
+        logArea.innerHTML = logLines.map(l => `<div class="${cls}">${l}</div>`).join('');
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function updateUI(data) {
+        if (data.users !== undefined) statUsers.textContent = data.users;
+        if (data.codes !== undefined) {
+            statCodes.textContent = data.codes.length;
+            if (data.codes.length === 0) {
+                codeContainer.innerHTML = '<span class="dim" style="font-size:0.75rem;">Chưa có mã</span>';
+            } else {
+                const withCodes = data.last_result?.codes_with || [];
+                const withoutCodes = data.last_result?.codes_without || [];
+                let html = '';
+                data.codes.forEach(c => {
+                    const has = withCodes.includes(c);
+                    const cls = has ? 'has' : 'no';
+                    const label = has ? '🔥' : '💢';
+                    html += `<span class="code-tag ${cls}">${c} ${label}</span>`;
+                });
+                codeContainer.innerHTML = html;
+            }
+        }
+        if (data.is_checking !== undefined) {
+            isChecking = data.is_checking;
+            if (isChecking) {
+                statStatus.textContent = '●';
+                statStatus.style.color = '#4fc3f7';
+                statusLabel.textContent = 'Đang chạy';
+                statusDetail.textContent = '🔄 Đang kiểm tra...';
+                checkBtn.classList.add('loading');
+                btnText.textContent = 'Đang kiểm tra...';
+                checkBtn.disabled = true;
+            } else {
+                const status = data.last_result?.status || 'idle';
+                const colors = { idle: '#8899bb', done: '#4caf50', error: '#f44336', no_codes: '#ff9800' };
+                const labels = { idle: 'Sẵn sàng', done: '✅ Hoàn thành', error: '❌ Lỗi', no_codes: '⚠️ Không có mã' };
+                statStatus.textContent = '●';
+                statStatus.style.color = colors[status] || '#8899bb';
+                statusLabel.textContent = labels[status] || 'Sẵn sàng';
+                statusDetail.textContent = status === 'done' ? '✅ Kiểm tra xong' : '🟢 Sẵn sàng';
+                checkBtn.classList.remove('loading');
+                btnText.textContent = '🔄 Kiểm tra ngay';
+                checkBtn.disabled = false;
+            }
+        }
+        if (data.last_result?.message) {
+            const msg = data.last_result.message;
+            const status = data.last_result.status;
+            if (status === 'done') addLog(`✅ ${msg}`, 'ok');
+            else if (status === 'error') addLog(`❌ ${msg}`, 'err');
+            else if (status === 'no_codes') addLog(`ℹ️ ${msg}`, 'warn');
+        }
+        if (data.last_result?.timestamp) {
+            lastUpdate.textContent = `🕐 ${new Date(data.last_result.timestamp).toLocaleTimeString('vi-VN')}`;
+        }
+        if (data.pending_users !== undefined && data.pending_users > 0) {
+            statusDetail.textContent += ` <span class="queue-badge">${data.pending_users} đang chờ</span>`;
+        }
+    }
+
+    async function fetchStatus() {
+        try {
+            const res = await fetch(`${API_BASE}/api/status`);
+            if (!res.ok) throw new Error('Network error');
+            const data = await res.json();
+            updateUI(data);
+            return data;
+        } catch (e) { return null; }
+    }
+
+    async function startCheck() {
+        if (isChecking) { addLog('⏳ Đang kiểm tra...', 'warn'); return; }
+        try {
+            const res = await fetch(`${API_BASE}/api/check`, { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'started') {
+                addLog('🚀 Đã bắt đầu kiểm tra!', 'ok');
+                await fetchStatus();
+                if (statusInterval) clearInterval(statusInterval);
+                statusInterval = setInterval(async () => {
+                    const data = await fetchStatus();
+                    if (data && !data.is_checking) {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                        if (data.last_result?.status === 'done') addLog('✅ Kiểm tra hoàn tất!', 'ok');
+                        else if (data.last_result?.status === 'no_codes') addLog('ℹ️ Không tìm thấy mã mới.', 'warn');
+                    }
+                }, 1500);
+            } else if (data.status === 'already_running') {
+                addLog('⏳ Đang kiểm tra...', 'warn');
+            } else if (data.status === 'cooldown') {
+                addLog(`⏳ ${data.message}`, 'warn');
+                if (data.last_result) updateUI({ last_result: data.last_result });
+            } else {
+                addLog(`❌ ${data.message || 'Lỗi'}`, 'err');
+            }
+        } catch (e) { addLog(`❌ Lỗi kết nối: ${e.message}`, 'err'); }
+    }
+
+    async function init() {
+        await fetchStatus();
+        setInterval(fetchStatus, 10000);
+        addLog('📱 Mini App đã sẵn sàng', 'dim');
+        addLog('📌 Nhấn "Kiểm tra ngay" để bắt đầu', 'dim');
+    }
+    init();
+</script>
+</body>
+</html>
