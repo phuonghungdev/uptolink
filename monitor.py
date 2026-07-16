@@ -18,7 +18,7 @@ import pytesseract
 from PIL import Image
 
 # =================== CONFIG ===================
-UPTOLINK_URL = "https://octolink.vip/RkPSRHS8"
+UPTOLINK_URL = "https://octolink.vip/Rw9J4NBS"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -192,7 +192,8 @@ def extract_domain_from_image_ocr(driver):
         return None
 
 # =================== KIỂM TRA UPTOLINK ===================
-def check_uptolink():
+def check_uptolink(log_fn=None):
+    log = log_fn or print
     driver = get_driver()
     new_codes = []
     ignore_count = 0
@@ -202,60 +203,99 @@ def check_uptolink():
             if ignore_count >= 5:
                 break
             
-            print(f"[*] Lần {i+1}/10")
-            driver.get(UPTOLINK_URL)
+            log(f"[*] Lần {i+1}/10 - Đang mở link gốc: {UPTOLINK_URL}")
+            try:
+                driver.get(UPTOLINK_URL)
+            except Exception as e:
+                log(f"[!] Lỗi khi mở link gốc: {e}")
+                continue
             time.sleep(5)
             
             url = driver.current_url
-            print(f"[*] URL cuối: {url}")
+            log(f"[*] URL sau khi chuyển hướng: {url}")
             
             if is_code_expired(url):
                 ignore_count += 1
-                print(f"[*] Hết mã (het-ma) (lần {ignore_count})")
+                log(f"[-] Hết mã (het-ma) (lần {ignore_count}/5)")
                 continue
                 
             if "linkhuongdan.online" in url:
                 code = extract_code_from_url(url)
                 if code and code not in new_codes:
                     new_codes.append(code)
-                    print(f"[+] Phát hiện mã: {code}")
+                    log(f"[+] Phát hiện mã mới: {code} (từ {url})")
+                elif not code:
+                    log(f"[-] Vào được linkhuongdan.online nhưng không trích được mã từ URL: {url}")
+            else:
+                log(f"[-] URL không khớp linkhuongdan.online, bỏ qua: {url}")
             
             time.sleep(2)
             
     except Exception as e:
-        print(f"[-] Lỗi check_uptolink: {e}")
+        log(f"[-] Lỗi check_uptolink: {e}")
     finally:
         driver.quit()
     
+    log(f"[*] Kết thúc quét link gốc. Tổng số mã mới: {len(new_codes)}")
     return new_codes
 
 # =================== KIỂM TRA 1 MÃ ===================
-def check_single_code(code):
+def check_single_code(code, log_fn=None):
+    log = log_fn or print
     driver = get_driver()
     found = False
     
     try:
-        print(f"\n[*] Kiểm tra mã: {code}")
+        log(f"[*] --- Bắt đầu kiểm tra mã: {code} ---")
         
         url = f"https://linkhuongdan.online/{code}/?qq=complete"
-        driver.get(url)
+        log(f"[*] Đang mở link mã: {url}")
+        try:
+            driver.get(url)
+        except Exception as e:
+            log(f"[!] LỖI khi mở link mã {code}: {e}")
+            return False
         time.sleep(5)
+        
+        loaded_url = driver.current_url
+        if loaded_url and loaded_url.startswith("https://linkhuongdan.online"):
+            log(f"[+] Mở link mã thành công -> {loaded_url}")
+        else:
+            log(f"[!] Mở link mã có vẻ thất bại/redirect lạ -> {loaded_url}")
         
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(2)
         
+        log(f"[*] Đang OCR ảnh để tìm domain đích...")
         target_domain = extract_domain_from_image_ocr(driver)
         if not target_domain:
+            log(f"[-] KHÔNG tìm được domain từ OCR cho mã {code}, bỏ qua mã này")
             return False
         
-        print(f"[*] Domain: {target_domain}")
+        log(f"[+] OCR tìm thấy domain đích: {target_domain}")
         
         driver.execute_script("window.open('');")
         driver.switch_to.window(driver.window_handles[-1])
-        driver.get(target_domain)
+        log(f"[*] Đang chuyển hướng (mở tab mới) sang: {target_domain}")
+        try:
+            driver.get(target_domain)
+        except Exception as e:
+            log(f"[!] LỖI khi chuyển hướng sang {target_domain}: {e}")
+            try:
+                driver.close()
+                driver.switch_to.window(driver.window_handles[0])
+            except:
+                pass
+            return False
         time.sleep(5)
         
-        print(f"[*] Đang tìm text/label VƯỢT MÃ (timeout {STEP1_TIMEOUT}s)...")
+        current_url = driver.current_url
+        if current_url and current_url != "about:blank" and current_url != "data:,":
+            log(f"[+] Chuyển hướng THÀNH CÔNG -> đang ở trang: {current_url}")
+        else:
+            log(f"[-] Chuyển hướng THẤT BẠI -> URL hiện tại: {current_url}")
+        
+        log(f"[*] Đang tìm text/label VƯỢT MÃ (timeout {STEP1_TIMEOUT}s)...")
         start_time = time.time()
         
         while time.time() - start_time < STEP1_TIMEOUT:
@@ -268,7 +308,7 @@ def check_single_code(code):
                         elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{pattern}')]")
                         for el in elements:
                             if el.is_displayed():
-                                print(f"[+] ✅ TÌM THẤY: '{pattern}'")
+                                log(f"[+] ✅ TÌM THẤY nút: '{pattern}' trên {current_url}")
                                 found = True
                                 break
                         if found:
@@ -285,7 +325,7 @@ def check_single_code(code):
                             EC.presence_of_element_located((By.XPATH, f"//*[contains(text(), '{pattern}')]"))
                         )
                         if element and element.is_displayed():
-                            print(f"[+] ✅ TÌM THẤY: '{pattern}'")
+                            log(f"[+] ✅ TÌM THẤY nút: '{pattern}' trên {current_url}")
                             found = True
                             break
                     except:
@@ -299,12 +339,12 @@ def check_single_code(code):
             time.sleep(1)
         
         if found:
-            print(f"[+] ✅ TÌM THẤY VƯỢT MÃ cho mã {code}")
+            log(f"[+] ✅ Mã {code}: CÓ NÚT VƯỢT MÃ")
             existing = load_codes()
             existing.add(code)
             save_codes(existing)
         else:
-            print(f"[-] ⏱️ Hết {STEP1_TIMEOUT}s, bỏ qua mã {code}")
+            log(f"[-] ⏱️ Mã {code}: hết {STEP1_TIMEOUT}s không thấy nút, bỏ qua")
         
         try:
             driver.close()
@@ -315,7 +355,7 @@ def check_single_code(code):
         return found
         
     except Exception as e:
-        print(f"[-] Lỗi: {e}")
+        log(f"[!] Lỗi không xác định khi kiểm tra mã {code}: {e}")
         return False
     finally:
         try:
@@ -324,13 +364,14 @@ def check_single_code(code):
             pass
 
 # =================== KIỂM TRA TẤT CẢ ===================
-def check_all_codes(new_codes):
+def check_all_codes(new_codes, log_fn=None):
+    log = log_fn or print
     codes_with = []
     codes_without = []
     
     for i, code in enumerate(new_codes, 1):
-        print(f"[*] Kiểm tra mã {i}/{len(new_codes)}: {code}")
-        if check_single_code(code):
+        log(f"[*] === Kiểm tra mã {i}/{len(new_codes)}: {code} ===")
+        if check_single_code(code, log_fn=log_fn):
             codes_with.append(code)
         else:
             codes_without.append(code)
