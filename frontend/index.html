@@ -154,6 +154,7 @@
     }
 
     function classifyServerLine(line) {
+        if (line.includes('CAPTCHA') || line.includes('Cloudflare')) return 'warn';
         if (line.includes('[+]') || line.includes('✅') || line.includes('thành công') || line.includes('THÀNH CÔNG')) return 'ok';
         if (line.includes('[!]') || line.includes('[-]') || line.includes('Lỗi') || line.includes('LỖI') || line.includes('THẤT BẠI') || line.includes('thất bại')) return 'err';
         return 'dim';
