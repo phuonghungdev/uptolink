@@ -209,7 +209,7 @@ def check_uptolink(log_fn=None):
             except Exception as e:
                 log(f"[!] Lỗi khi mở link gốc: {e}")
                 continue
-            time.sleep(5)
+            time.sleep(15)
             
             url = driver.current_url
             log(f"[*] URL sau khi chuyển hướng: {url}")
