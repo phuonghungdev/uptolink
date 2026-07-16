@@ -144,15 +144,41 @@
     const checkBtn = document.getElementById('checkBtn');
     const btnText = document.getElementById('btnText');
 
+    let lastServerLogCount = 0;
+
     function addLog(text, type = '') {
         const ts = new Date().toLocaleTimeString('vi-VN');
         const cls = type === 'ok' ? 'ok' : type === 'err' ? 'err' : type === 'warn' ? 'warn' : 'hl';
-        logLines.push(`[${ts}] ${text}`);
-        logArea.innerHTML = logLines.map(l => `<div class="${cls}">${l}</div>`).join('');
+        logLines.push({ text: `[${ts}] ${text}`, cls });
+        renderLogs();
+    }
+
+    function classifyServerLine(line) {
+        if (line.includes('[+]') || line.includes('✅') || line.includes('thành công') || line.includes('THÀNH CÔNG')) return 'ok';
+        if (line.includes('[!]') || line.includes('[-]') || line.includes('Lỗi') || line.includes('LỖI') || line.includes('THẤT BẠI') || line.includes('thất bại')) return 'err';
+        return 'dim';
+    }
+
+    function renderLogs() {
+        logArea.innerHTML = logLines.map(l => `<div class="${l.cls}">${l.text}</div>`).join('');
         logArea.scrollTop = logArea.scrollHeight;
     }
 
+    // Đồng bộ log thật từ server (quá trình mở link mã, OCR, chuyển hướng...)
+    function syncServerLogs(logs) {
+        if (!logs || !logs.length) return;
+        // Server trả về log_messages[-80:] mỗi lần — chỉ thêm dòng mới
+        if (logs.length < lastServerLogCount) lastServerLogCount = 0; // server đã cắt bớt/khởi động lại
+        const toAdd = logs.slice(Math.max(0, lastServerLogCount));
+        toAdd.forEach(line => {
+            logLines.push({ text: line, cls: classifyServerLine(line) });
+        });
+        lastServerLogCount = logs.length;
+        if (toAdd.length) renderLogs();
+    }
+
     function updateUI(data) {
+        if (data.logs !== undefined) syncServerLogs(data.logs);
         if (data.users !== undefined) statUsers.textContent = data.users;
         if (data.codes !== undefined) {
             statCodes.textContent = data.codes.length;
