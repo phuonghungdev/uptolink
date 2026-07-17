@@ -266,8 +266,8 @@ def check_uptolink(log_fn=None):
     driver = get_driver(log)
     new_codes = []
     try:
-        for i in range(15):
-            log(f"[*] Lần quét {i+1}/15")
+        for i in range(5):
+            log(f"[*] Lần quét {i+1}/5")
             try:
                 driver.get(UPTOLINK_URL)
             except:
@@ -290,7 +290,7 @@ def check_uptolink(log_fn=None):
     finally:
         driver.quit()
     
-    log(f"[*] Hoàn thành 15 lần quét. Tìm thấy {len(new_codes)} mã.")
+    log(f"[*] Hoàn thành 5 lần quét. Tìm thấy {len(new_codes)} mã.")
     return new_codes
 
 # =================== (Không dùng nữa) ===================
