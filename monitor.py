@@ -98,6 +98,52 @@ def get_driver(log_fn=None):
                 continue
     raise Exception("Chromedriver not found")
 
+# =================== TEST PROXY THẬT ===================
+def test_proxy_connection(log_fn=None):
+    log = log_fn or print
+    config = load_config()
+    if not config.get("use_proxy") or not config.get("proxy_host"):
+        log("[*] Không dùng proxy")
+        return True
+    
+    proxy_host = config["proxy_host"]
+    proxy_port = config["proxy_port"]
+    proxy_type = config["proxy_type"].lower()
+    
+    log(f"[*] Đang test kết nối proxy {proxy_type}://{proxy_host}:{proxy_port} (timeout 8s)...")
+    
+    try:
+        # Test đơn giản bằng requests
+        proxies = {}
+        if proxy_type in ["socks4", "socks5"]:
+            proxies = {
+                "http": f"{proxy_type}://{proxy_host}:{proxy_port}",
+                "https": f"{proxy_type}://{proxy_host}:{proxy_port}"
+            }
+        else:
+            proxies = {
+                "http": f"http://{proxy_host}:{proxy_port}",
+                "https": f"http://{proxy_host}:{proxy_port}"
+            }
+        
+        start = time.time()
+        response = requests.get("https://httpbin.org/ip", 
+                              proxies=proxies, 
+                              timeout=8, 
+                              headers={"User-Agent": random.choice(USER_AGENTS)})
+        
+        if response.status_code == 200:
+            log(f"[+] Proxy HOẠT ĐỘNG (thời gian: {int((time.time()-start)*1000)}ms)")
+            return True
+        else:
+            log(f"[-] Proxy phản hồi nhưng lỗi {response.status_code}")
+            return False
+    except requests.exceptions.Timeout:
+        log("[-] Proxy DIE (timeout 8 giây)")
+        return False
+    except Exception as e:
+        log(f"[-] Proxy lỗi: {str(e)[:100]}")
+        return False
 # =================== DATA ===================
 def load_users():
     if os.path.exists(USERS_FILE):
