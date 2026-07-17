@@ -95,15 +95,14 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .footer { text-align: center; font-size: 0.6rem; color: var(--text-secondary); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
         .queue-badge { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.6rem; background: rgba(255, 152, 0, 0.12); color: var(--warning); margin-left: 4px; }
-        @media (max-width: 400px) { .status-grid { gap: 5px; } .stat-card .num { font-size: 1.2rem; } .header h1 { font-size: 1.3rem; } .app { padding: 12px; } .log-area { max-height: 110px; } }
-        @media (min-width: 768px) { .app { max-width: 560px; padding: 24px; } .header h1 { font-size: 2rem; } .stat-card .num { font-size: 1.8rem; } }
+        .proxy-section { background: var(--bg-input); padding: 14px; border-radius: 12px; border: 1px solid var(--border); margin: 12px 0; }
     </style>
 </head>
 <body>
 <div class="app" id="app">
     <div class="header">
         <h1>🚀 UptoLink</h1>
-        <div class="sub">Monitor &bull; Tự động tìm mã &bull; OCR</div>
+        <div class="sub">Monitor &bull; Tự động tìm mã &bull; OCR &bull; Proxy</div>
     </div>
     <div class="status-grid">
         <div class="stat-card"><div class="num" id="statUsers">0</div><div class="label">👥 Người dùng</div></div>
@@ -124,8 +123,34 @@
         <div class="title">📋 Mã đã phát hiện</div>
         <div id="codeContainer"><span class="dim" style="font-size:0.75rem;">Chưa có mã</span></div>
     </div>
-    <div class="footer">⚡ Dữ liệu thực · Selenium + OCR · Telegram Mini App</div>
+
+    <!-- PROXY SECTION -->
+    <div class="code-section proxy-section">
+        <div class="title">🌐 Cấu hình Proxy</div>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:0.82rem; cursor:pointer;">
+            <input type="checkbox" id="useProxy" onchange="toggleProxyFields()">
+            <span>Sử dụng Proxy (thay IP gốc)</span>
+        </label>
+        <div id="proxyFields" style="display:none; gap:8px; flex-direction:column;">
+            <input type="text" id="proxyHost" placeholder="Proxy Host (IP hoặc domain)" style="padding:11px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white; width:100%;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                <input type="text" id="proxyPort" placeholder="Port" style="padding:11px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white;">
+                <select id="proxyType" style="padding:11px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white;">
+                    <option value="http">HTTP</option>
+                    <option value="socks4">SOCKS4</option>
+                    <option value="socks5">SOCKS5</option>
+                </select>
+            </div>
+            <input type="text" id="proxyUser" placeholder="Username (nếu có)" style="padding:11px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white;">
+            <input type="password" id="proxyPass" placeholder="Password (nếu có)" style="padding:11px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white;">
+        </div>
+        <button class="btn-secondary" onclick="saveProxyConfig()" style="margin-top:10px;">💾 Lưu cấu hình Proxy</button>
+        <button class="btn-secondary" onclick="testProxy()" style="margin-top:6px;">🔍 Test Proxy</button>
+    </div>
+
+    <div class="footer">⚡ Selenium + OCR + Proxy Support • Telegram Mini App</div>
 </div>
+
 <script>
     const API_BASE = window.location.origin;
     let isChecking = false;
@@ -133,6 +158,7 @@
     let statusInterval = null;
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
+
     const statUsers = document.getElementById('statUsers');
     const statCodes = document.getElementById('statCodes');
     const statStatus = document.getElementById('statStatus');
@@ -165,11 +191,9 @@
         logArea.scrollTop = logArea.scrollHeight;
     }
 
-    // Đồng bộ log thật từ server (quá trình mở link mã, OCR, chuyển hướng...)
     function syncServerLogs(logs) {
         if (!logs || !logs.length) return;
-        // Server trả về log_messages[-80:] mỗi lần — chỉ thêm dòng mới
-        if (logs.length < lastServerLogCount) lastServerLogCount = 0; // server đã cắt bớt/khởi động lại
+        if (logs.length < lastServerLogCount) lastServerLogCount = 0;
         const toAdd = logs.slice(Math.max(0, lastServerLogCount));
         toAdd.forEach(line => {
             logLines.push({ text: line, cls: classifyServerLine(line) });
@@ -187,7 +211,6 @@
                 codeContainer.innerHTML = '<span class="dim" style="font-size:0.75rem;">Chưa có mã</span>';
             } else {
                 const withCodes = data.last_result?.codes_with || [];
-                const withoutCodes = data.last_result?.codes_without || [];
                 let html = '';
                 data.codes.forEach(c => {
                     const has = withCodes.includes(c);
@@ -275,10 +298,64 @@
         } catch (e) { addLog(`❌ Lỗi kết nối: ${e.message}`, 'err'); }
     }
 
+    // Proxy UI
+    async function loadProxyConfig() {
+        try {
+            const res = await fetch(`${API_BASE}/api/config`);
+            const config = await res.json();
+            document.getElementById('useProxy').checked = config.use_proxy;
+            document.getElementById('proxyHost').value = config.proxy_host || '';
+            document.getElementById('proxyPort').value = config.proxy_port || '';
+            document.getElementById('proxyType').value = config.proxy_type || 'http';
+            document.getElementById('proxyUser').value = config.proxy_user || '';
+            document.getElementById('proxyPass').value = config.proxy_pass || '';
+            toggleProxyFields();
+        } catch(e) {}
+    }
+
+    function toggleProxyFields() {
+        const enabled = document.getElementById('useProxy').checked;
+        document.getElementById('proxyFields').style.display = enabled ? 'flex' : 'none';
+    }
+
+    async function saveProxyConfig() {
+        const config = {
+            use_proxy: document.getElementById('useProxy').checked,
+            proxy_host: document.getElementById('proxyHost').value.trim(),
+            proxy_port: document.getElementById('proxyPort').value.trim(),
+            proxy_type: document.getElementById('proxyType').value,
+            proxy_user: document.getElementById('proxyUser').value.trim(),
+            proxy_pass: document.getElementById('proxyPass').value.trim()
+        };
+        try {
+            const res = await fetch(`${API_BASE}/api/config`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            const data = await res.json();
+            addLog(data.message || 'Đã lưu proxy config', 'ok');
+        } catch(e) {
+            addLog('❌ Lỗi lưu proxy config', 'err');
+        }
+    }
+
+    async function testProxy() {
+        addLog('🔍 Đang test proxy...', 'warn');
+        try {
+            const res = await fetch(`${API_BASE}/api/test-proxy`, { method: 'POST' });
+            const data = await res.json();
+            addLog(`✅ Proxy OK: ${data.config.proxy_type || 'none'}`, 'ok');
+        } catch(e) {
+            addLog('❌ Test proxy thất bại', 'err');
+        }
+    }
+
     async function init() {
         await fetchStatus();
+        await loadProxyConfig();
         setInterval(fetchStatus, 10000);
-        addLog('📱 Mini App đã sẵn sàng', 'dim');
+        addLog('📱 Mini App đã sẵn sàng với Proxy', 'dim');
         addLog('📌 Nhấn "Kiểm tra ngay" để bắt đầu', 'dim');
     }
     init();
