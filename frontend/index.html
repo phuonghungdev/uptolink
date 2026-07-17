@@ -298,7 +298,7 @@
         } catch (e) { addLog(`❌ Lỗi kết nối: ${e.message}`, 'err'); }
     }
 
-    // Proxy UI
+        // Proxy UI
     async function loadProxyConfig() {
         try {
             const res = await fetch(`${API_BASE}/api/config`);
@@ -341,11 +341,17 @@
     }
 
     async function testProxy() {
-        addLog('🔍 Đang test proxy...', 'warn');
+        addLog('🔍 Đang test proxy config...', 'warn');
         try {
             const res = await fetch(`${API_BASE}/api/test-proxy`, { method: 'POST' });
             const data = await res.json();
-            addLog(`✅ Proxy OK: ${data.config.proxy_type || 'none'}`, 'ok');
+            const cfg = data.config;
+            let proxyInfo = "Không dùng proxy";
+            if (cfg.use_proxy && cfg.proxy_host && cfg.proxy_port) {
+                proxyInfo = `${cfg.proxy_type.toUpperCase()}://${cfg.proxy_host}:${cfg.proxy_port}`;
+                if (cfg.proxy_user) proxyInfo += ` (có auth)`;
+            }
+            addLog(`✅ Proxy config: ${proxyInfo}`, 'ok');
         } catch(e) {
             addLog('❌ Test proxy thất bại', 'err');
         }
