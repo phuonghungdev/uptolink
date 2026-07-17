@@ -11,8 +11,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import pytesseract
 from PIL import Image
 
@@ -45,7 +43,7 @@ CODES_FILE = os.path.join(BASE_DIR, "found_codes.json")
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 STEP1_TIMEOUT = 15
 
-# =================== PROXY CONFIG ===================
+# =================== PROXY ===================
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -53,20 +51,12 @@ def load_config():
                 return json.load(f)
         except:
             pass
-    return {
-        "use_proxy": False,
-        "proxy_host": "",
-        "proxy_port": "",
-        "proxy_type": "http",
-        "proxy_user": "",
-        "proxy_pass": ""
-    }
+    return {"use_proxy": False, "proxy_host": "", "proxy_port": "", "proxy_type": "http", "proxy_user": "", "proxy_pass": ""}
 
 def save_config(config):
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
-# =================== DRIVER WITH PROXY ===================
 def get_driver(log_fn=None):
     log = log_fn or print
     config = load_config()
@@ -79,14 +69,12 @@ def get_driver(log_fn=None):
     options.add_argument("--window-size=1920,1080")
     options.add_argument(f"user-agent={random.choice(USER_AGENTS)}")
     
-    # PROXY
     if config.get("use_proxy") and config.get("proxy_host") and config.get("proxy_port"):
         ph = config["proxy_host"].strip()
         pp = config["proxy_port"].strip()
         pt = config["proxy_type"].lower()
         user = config.get("proxy_user", "").strip()
         pwd = config.get("proxy_pass", "").strip()
-        
         if pt in ["socks4", "socks5"]:
             proxy_str = f"{pt}://{ph}:{pp}" if not (user and pwd) else f"{pt}://{user}:{pwd}@{ph}:{pp}"
         else:
@@ -94,7 +82,6 @@ def get_driver(log_fn=None):
         options.add_argument(f'--proxy-server={proxy_str}')
         log(f"[*] Sử dụng {pt.upper()} proxy: {ph}:{pp}")
     
-    # Chrome paths
     chrome_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]
     for path in chrome_paths:
         if os.path.exists(path):
@@ -106,13 +93,12 @@ def get_driver(log_fn=None):
         if os.path.exists(path):
             try:
                 service = Service(path)
-                driver = webdriver.Chrome(service=service, options=options)
-                return driver
+                return webdriver.Chrome(service=service, options=options)
             except:
                 continue
     raise Exception("Chromedriver not found")
 
-# =================== DATA FUNCTIONS ===================
+# =================== DATA ===================
 def load_users():
     if os.path.exists(USERS_FILE):
         try:
@@ -143,23 +129,18 @@ def save_codes(codes):
 
 # =================== HELPERS ===================
 def extract_code_from_url(url):
-    if "het-ma" in url.lower():
-        return None
+    if "het-ma" in url.lower(): return None
     match = re.search(r'/(\d+-\d+)/?', url)
-    if match:
-        return match.group(1)
+    if match: return match.group(1)
     match = re.search(r'/(\d+)(?:\?|$)', url)
-    if match:
-        return match.group(1)
+    if match: return match.group(1)
     return None
 
 def is_code_expired(url):
     return "het-ma" in url.lower()
 
-# =================== OCR ===================
 def extract_domain_from_image_ocr(driver):
     try:
-        print("[*] Đang OCR...")
         images = driver.find_elements(By.TAG_NAME, "img")
         for img in images:
             try:
@@ -182,76 +163,90 @@ def extract_domain_from_image_ocr(driver):
     except:
         return None
 
-# =================== MAIN FUNCTIONS ===================
-def check_uptolink(log_fn=None):
-    log = log_fn or print
-    driver = get_driver(log)
-    new_codes = []
-    try:
-        for i in range(10):
-            log(f"[*] Lần {i+1}/10 - Mở link gốc")
-            driver.get(UPTOLINK_URL)
-            time.sleep(5)
-            url = driver.current_url
-            if "linkhuongdan.online" in url:
-                code = extract_code_from_url(url)
-                if code and code not in new_codes:
-                    new_codes.append(code)
-                    log(f"[+] Phát hiện mã: {code}")
-    except Exception as e:
-        log(f"[-] Lỗi: {e}")
-    finally:
-        driver.quit()
-    return new_codes
-
+# =================== KIỂM TRA NÚT NGAY ===================
 def check_single_code(code, log_fn=None):
     log = log_fn or print
     driver = get_driver(log)
     found = False
     try:
+        log(f"[*] Kiểm tra nút cho mã: {code}")
         url = f"https://linkhuongdan.online/{code}/?qq=complete"
         driver.get(url)
         time.sleep(5)
+
         target_domain = extract_domain_from_image_ocr(driver)
         if not target_domain:
+            log(f"[-] Không tìm domain cho mã {code}")
             return False
+
         driver.execute_script("window.open('');")
         driver.switch_to.window(driver.window_handles[-1])
         driver.get(target_domain)
         time.sleep(5)
-        # Tìm nút
+
         start_time = time.time()
         while time.time() - start_time < STEP1_TIMEOUT:
             for pattern in BUTTON_PATTERNS:
                 try:
-                    el = driver.find_element(By.XPATH, f"//*[contains(text(), '{pattern}')]")
-                    if el.is_displayed():
-                        found = True
-                        break
+                    elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{pattern}')]")
+                    for el in elements:
+                        if el.is_displayed():
+                            log(f"[+] ✅ TÌM THẤY nút '{pattern}' cho mã {code}")
+                            found = True
+                            break
+                    if found: break
                 except:
                     continue
             if found: break
             time.sleep(1)
+
         if found:
-            log(f"[+] Mã {code} CÓ NÚT")
             existing = load_codes()
             existing.add(code)
             save_codes(existing)
+            log(f"[+] Mã {code} CÓ NÚT 🔥")
+        else:
+            log(f"[-] Mã {code} không có nút")
         return found
     except Exception as e:
-        log(f"[!] Lỗi check {code}: {e}")
+        log(f"[!] Lỗi check mã {code}: {e}")
         return False
     finally:
         driver.quit()
 
-def check_all_codes(new_codes, log_fn=None):
+# =================== QUÉT MÃ CHÍNH ===================
+def check_uptolink(log_fn=None):
     log = log_fn or print
-    codes_with = []
-    codes_without = []
-    for i, code in enumerate(new_codes, 1):
-        log(f"[*] Kiểm tra mã {i}/{len(new_codes)}: {code}")
-        if check_single_code(code, log_fn=log):
-            codes_with.append(code)
-        else:
-            codes_without.append(code)
-    return codes_with, codes_without
+    driver = get_driver(log)
+    new_codes = []
+    try:
+        for i in range(15):
+            log(f"[*] Lần quét {i+1}/15")
+            try:
+                driver.get(UPTOLINK_URL)
+            except:
+                continue
+            time.sleep(4)
+
+            url = driver.current_url
+            if is_code_expired(url):
+                continue
+
+            if "linkhuongdan.online" in url:
+                code = extract_code_from_url(url)
+                if code and code not in new_codes:
+                    new_codes.append(code)
+                    log(f"[+] Phát hiện mã mới: {code}")
+                    # KIỂM TRA NÚT NGAY
+                    check_single_code(code, log_fn=log)
+    except Exception as e:
+        log(f"[-] Lỗi check_uptolink: {e}")
+    finally:
+        driver.quit()
+    
+    log(f"[*] Hoàn thành 15 lần quét. Tìm thấy {len(new_codes)} mã.")
+    return new_codes
+
+# =================== (Không dùng nữa) ===================
+def check_all_codes(new_codes, log_fn=None):
+    return [], []   # Giữ hàm để code không lỗi
