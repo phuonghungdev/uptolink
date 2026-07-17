@@ -9,7 +9,7 @@ import telebot
 from monitor import (
     check_uptolink, check_single_code, check_all_codes,
     load_codes, save_codes, load_users, save_users,
-    load_config, save_config
+    load_config, save_config, test_proxy_connection
 )
 
 # =================== CONFIG ===================
@@ -66,23 +66,24 @@ def get_config():
 @app.route('/api/config', methods=['POST'])
 def save_proxy_config():
     try:
-        data = request.json
+        data = request.json or {}
         config = {
             "use_proxy": bool(data.get("use_proxy", False)),
-            "proxy_host": str(data.get("proxy_host", "")),
-            "proxy_port": str(data.get("proxy_port", "")),
-            "proxy_type": str(data.get("proxy_type", "http")),
-            "proxy_user": str(data.get("proxy_user", "")),
-            "proxy_pass": str(data.get("proxy_pass", ""))
+            "proxy_host": str(data.get("proxy_host", "")).strip(),
+            "proxy_port": str(data.get("proxy_port", "")).strip(),
+            "proxy_type": str(data.get("proxy_type", "http")).strip().lower(),
+            "proxy_user": str(data.get("proxy_user", "")).strip(),
+            "proxy_pass": str(data.get("proxy_pass", "")).strip()
         }
         save_config(config)
-        return jsonify({"status": "success", "message": "Đã lưu cấu hình proxy thành công"})
+        print(f"[SAVE PROXY] use_proxy={config['use_proxy']}, host={config['proxy_host']}")
+        return jsonify({"status": "success", "message": "✅ Đã lưu proxy"})
     except Exception as e:
+        print(f"[SAVE ERROR] {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/test-proxy', methods=['POST'])
 def test_proxy():
-    from monitor import test_proxy_connection
     success = test_proxy_connection(log_fn=log)
     config = load_config()
     return jsonify({
@@ -159,35 +160,27 @@ def start_check():
     threading.Thread(target=run_check, daemon=True).start()
     return jsonify({"status": "started", "message": "Đã bắt đầu kiểm tra!"})
 
-# =================== TELEGRAM ===================
+# =================== TELEGRAM (giữ nguyên) ===================
 def send_telegram_report(new_codes, codes_with, codes_without):
     users = load_users()
-    if not users:
-        return
+    if not users: return
     msg1 = "PHÁT HIỆN MÃ MỚI ✅\n"
-    for c in new_codes:
-        msg1 += f"- {c}\n"
+    for c in new_codes: msg1 += f"- {c}\n"
     msg1 += f"\n{datetime.now().strftime('%H:%M, %d/%m/%Y')}"
     msg2 = ""
     if codes_with:
         msg2 += "PHÁT HIỆN MÃ CÓ NÚT ✅\n"
-        for c in codes_with:
-            msg2 += f"- {c} - Có Nút 🔥\n"
+        for c in codes_with: msg2 += f"- {c} - Có Nút 🔥\n"
     if codes_without:
-        if msg2:
-            msg2 += "================\n"
+        if msg2: msg2 += "================\n"
         msg2 += "MÃ KHÔNG CÓ NÚT ❗\n"
-        for c in codes_without:
-            msg2 += f"- {c} - 💢\n"
-    if msg2:
-        msg2 += f"\n{datetime.now().strftime('%H:%M, %d/%m/%Y')}"
+        for c in codes_without: msg2 += f"- {c} - 💢\n"
+    if msg2: msg2 += f"\n{datetime.now().strftime('%H:%M, %d/%m/%Y')}"
     for user in users:
         try:
             bot.send_message(user, msg1)
-            if msg2:
-                bot.send_message(user, msg2)
-        except:
-            pass
+            if msg2: bot.send_message(user, msg2)
+        except: pass
 
 @bot.message_handler(commands=['start'])
 def start_command(message):
@@ -197,16 +190,8 @@ def start_command(message):
         users.append(user_id)
         save_users(users)
     keyboard = telebot.types.InlineKeyboardMarkup()
-    keyboard.add(telebot.types.InlineKeyboardButton(
-        text="🚀 Mở UptoLink Monitor",
-        web_app=telebot.types.WebAppInfo(url=BASE_URL)
-    ))
-    bot.reply_to(
-        message,
-        "🤖 **UptoLink Monitor Bot**\n\n📌 Bấm nút dưới để mở **Mini App**.\n🌐 Hỗ trợ Proxy (HTTP/SOCKS4/SOCKS5)",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    keyboard.add(telebot.types.InlineKeyboardButton("🚀 Mở UptoLink Monitor", web_app=telebot.types.WebAppInfo(url=BASE_URL)))
+    bot.reply_to(message, "🤖 **UptoLink Monitor Bot**\n\n📌 Mở Mini App để dùng.\n🌐 Hỗ trợ Proxy", reply_markup=keyboard, parse_mode="Markdown")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -225,18 +210,9 @@ def serve_static(path):
 
 # =================== MAIN ===================
 if __name__ == '__main__':
-    if not os.path.exists("users.json"):
-        save_users([])
-    if not os.path.exists("found_codes.json"):
-        save_codes([])
+    if not os.path.exists("users.json"): save_users([])
+    if not os.path.exists("found_codes.json"): save_codes([])
     if not os.path.exists("config.json"):
-        save_config({
-            "use_proxy": False,
-            "proxy_host": "",
-            "proxy_port": "",
-            "proxy_type": "http",
-            "proxy_user": "",
-            "proxy_pass": ""
-        })
+        save_config({"use_proxy": False, "proxy_host": "", "proxy_port": "", "proxy_type": "http", "proxy_user": "", "proxy_pass": ""})
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
