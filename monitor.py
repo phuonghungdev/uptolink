@@ -11,14 +11,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import pytesseract
 from PIL import Image
 
 # =================== CONFIG ===================
-UPTOLINK_URL = "https://octolink.vip/skfX"
+UPTOLINK_URL = "https://octolink.vip/Rw9J4NBS"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -29,16 +28,8 @@ USER_AGENTS = [
 ]
 
 BUTTON_PATTERNS = [
-    "VƯỢT MÃ STEP 1",
-    "VƯỢT MÃ STEP1",
-    "VƯỢT MÃ STEP",
-    "VƯỢT MÃ",
-    "LẤY MÃ STEP 1",
-    "LẤY MÃ STEP1",
-    "STEP 1",
-    "STEP1",
-    "BẮT ĐẦU",
-    "NHẬN MÃ"
+    "VƯỢT MÃ STEP 1", "VƯỢT MÃ STEP1", "VƯỢT MÃ STEP", "VƯỢT MÃ",
+    "LẤY MÃ STEP 1", "LẤY MÃ STEP1", "STEP 1", "STEP1", "BẮT ĐẦU", "NHẬN MÃ"
 ]
 
 BLACKLIST_DOMAINS = [
@@ -51,10 +42,34 @@ BLACKLIST_DOMAINS = [
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 CODES_FILE = os.path.join(BASE_DIR, "found_codes.json")
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 STEP1_TIMEOUT = 15
 
-# =================== DRIVER ===================
-def get_driver():
+# =================== PROXY CONFIG ===================
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "use_proxy": False,
+        "proxy_host": "",
+        "proxy_port": "",
+        "proxy_type": "http",
+        "proxy_user": "",
+        "proxy_pass": ""
+    }
+
+def save_config(config):
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+# =================== DRIVER WITH PROXY ===================
+def get_driver(log_fn=None):
+    log = log_fn or print
+    config = load_config()
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -64,25 +79,29 @@ def get_driver():
     options.add_argument("--window-size=1920,1080")
     options.add_argument(f"user-agent={random.choice(USER_AGENTS)}")
     
-    # Đường dẫn Chromium trên Railway
-    chrome_paths = [
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-    ]
+    # PROXY
+    if config.get("use_proxy") and config.get("proxy_host") and config.get("proxy_port"):
+        ph = config["proxy_host"].strip()
+        pp = config["proxy_port"].strip()
+        pt = config["proxy_type"].lower()
+        user = config.get("proxy_user", "").strip()
+        pwd = config.get("proxy_pass", "").strip()
+        
+        if pt in ["socks4", "socks5"]:
+            proxy_str = f"{pt}://{ph}:{pp}" if not (user and pwd) else f"{pt}://{user}:{pwd}@{ph}:{pp}"
+        else:
+            proxy_str = f"http://{ph}:{pp}" if not (user and pwd) else f"http://{user}:{pwd}@{ph}:{pp}"
+        options.add_argument(f'--proxy-server={proxy_str}')
+        log(f"[*] Sử dụng {pt.upper()} proxy: {ph}:{pp}")
     
+    # Chrome paths
+    chrome_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]
     for path in chrome_paths:
         if os.path.exists(path):
             options.binary_location = path
             break
     
-    # Đường dẫn chromedriver
-    driver_paths = [
-        "/usr/bin/chromedriver",
-        "/usr/lib/chromium/chromedriver",
-        "/usr/bin/chromium-driver",
-    ]
-    
+    driver_paths = ["/usr/bin/chromedriver", "/usr/lib/chromium/chromedriver", "/usr/bin/chromium-driver"]
     for path in driver_paths:
         if os.path.exists(path):
             try:
@@ -91,10 +110,9 @@ def get_driver():
                 return driver
             except:
                 continue
-    
     raise Exception("Chromedriver not found")
 
-# =================== QUẢN LÝ DỮ LIỆU ===================
+# =================== DATA FUNCTIONS ===================
 def load_users():
     if os.path.exists(USERS_FILE):
         try:
@@ -123,11 +141,10 @@ def save_codes(codes):
     with open(CODES_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# =================== HÀM TRÍCH XUẤT ===================
+# =================== HELPERS ===================
 def extract_code_from_url(url):
     if "het-ma" in url.lower():
         return None
-    
     match = re.search(r'/(\d+-\d+)/?', url)
     if match:
         return match.group(1)
@@ -142,297 +159,99 @@ def is_code_expired(url):
 # =================== OCR ===================
 def extract_domain_from_image_ocr(driver):
     try:
-        print("[*] Đang trích xuất domain từ ảnh bằng OCR...")
-        
-        images = driver.find_elements(By.XPATH, """
-            //img[ancestor::*[contains(@style, 'border:red') or 
-                              contains(@style, 'border:#ff') or 
-                              contains(@class, 'border-red') or 
-                              contains(@class, 'red-border')]]
-        """)
-        
-        if not images:
-            images = driver.find_elements(By.TAG_NAME, "img")
-        
+        print("[*] Đang OCR...")
+        images = driver.find_elements(By.TAG_NAME, "img")
         for img in images:
             try:
                 src = img.get_attribute("src")
-                if not src:
-                    continue
-                
+                if not src: continue
                 if src.startswith("data:image"):
-                    base64_data = src.split(",")[1]
-                    image_bytes = base64.b64decode(base64_data)
+                    image_bytes = base64.b64decode(src.split(",")[1])
                 else:
                     response = requests.get(src, timeout=10, headers={"User-Agent": random.choice(USER_AGENTS)})
-                    if response.status_code != 200:
-                        continue
                     image_bytes = response.content
-                
                 image = Image.open(io.BytesIO(image_bytes))
                 text = pytesseract.image_to_string(image, lang='vie+eng')
-                print(f"[*] OCR đọc được: {text[:200]}...")
-                
                 matches = re.findall(r'(https?://[^/\s?#]+)', text)
                 for domain in matches:
                     if not any(bad in domain.lower() for bad in BLACKLIST_DOMAINS):
                         return domain
-                
-                matches = re.findall(r'([a-zA-Z0-9\-]+(\.[a-zA-Z]{2,})+)', text)
-                for domain_match in matches:
-                    domain = domain_match[0]
-                    if not any(bad in domain.lower() for bad in BLACKLIST_DOMAINS):
-                        return f"https://{domain}"
-                        
-            except Exception as e:
+            except:
                 continue
-        
         return None
-    except Exception as e:
+    except:
         return None
 
-# =================== KIỂM TRA UPTOLINK ===================
+# =================== MAIN FUNCTIONS ===================
 def check_uptolink(log_fn=None):
     log = log_fn or print
-    driver = get_driver()
+    driver = get_driver(log)
     new_codes = []
-    ignore_count = 0
-    
     try:
         for i in range(10):
-            if ignore_count >= 5:
-                break
-            
-            log(f"[*] Lần {i+1}/10 - Đang mở link gốc: {UPTOLINK_URL}")
-            try:
-                driver.get(UPTOLINK_URL)
-            except Exception as e:
-                log(f"[!] Lỗi khi mở link gốc: {e}")
-                continue
-            time.sleep(15)
-            
+            log(f"[*] Lần {i+1}/10 - Mở link gốc")
+            driver.get(UPTOLINK_URL)
+            time.sleep(5)
             url = driver.current_url
-            log(f"[*] URL sau khi chuyển hướng: {url}")
-            
-            if is_code_expired(url):
-                ignore_count += 1
-                log(f"[-] Hết mã (het-ma) (lần {ignore_count}/5)")
-                continue
-                
             if "linkhuongdan.online" in url:
                 code = extract_code_from_url(url)
                 if code and code not in new_codes:
                     new_codes.append(code)
-                    log(f"[+] Phát hiện mã mới: {code} (từ {url})")
-                elif not code:
-                    log(f"[-] Vào được linkhuongdan.online nhưng không trích được mã từ URL: {url}")
-            else:
-                log(f"[-] URL không khớp linkhuongdan.online, bỏ qua: {url}")
-            
-            time.sleep(2)
-            
+                    log(f"[+] Phát hiện mã: {code}")
     except Exception as e:
-        log(f"[-] Lỗi check_uptolink: {e}")
+        log(f"[-] Lỗi: {e}")
     finally:
         driver.quit()
-    
-    log(f"[*] Kết thúc quét link gốc. Tổng số mã mới: {len(new_codes)}")
     return new_codes
 
-# =================== PHÁT HIỆN CLOUDFLARE CHALLENGE ===================
-CF_TITLE_MARKERS = [
-    "just a moment",
-    "attention required",
-    "checking your browser",
-    "please wait",
-    "verify you are human",
-    "one more step",
-]
-CF_SOURCE_MARKERS = [
-    "cf-turnstile",
-    "cf_chl_opt",
-    "cf-chl-",
-    "challenges.cloudflare.com",
-    "__cf_chl_rt_tk",
-    "cf-please-wait",
-    "cf-browser-verification",
-    "/cdn-cgi/challenge-platform",
-]
-
-def detect_cloudflare_challenge(driver):
-    """Trả về (True, lý_do) nếu trang hiện tại là trang challenge/captcha Cloudflare."""
-    try:
-        title = (driver.title or "").strip().lower()
-        for marker in CF_TITLE_MARKERS:
-            if marker in title:
-                return True, f"title chứa '{marker}' ({driver.title!r})"
-        
-        try:
-            page_source = driver.page_source.lower()
-        except Exception:
-            page_source = ""
-        
-        for marker in CF_SOURCE_MARKERS:
-            if marker in page_source:
-                return True, f"HTML chứa dấu hiệu '{marker}'"
-        
-        return False, None
-    except Exception:
-        return False, None
-
-# =================== KIỂM TRA 1 MÃ ===================
 def check_single_code(code, log_fn=None):
     log = log_fn or print
-    driver = get_driver()
+    driver = get_driver(log)
     found = False
-    
     try:
-        log(f"[*] --- Bắt đầu kiểm tra mã: {code} ---")
-        
         url = f"https://linkhuongdan.online/{code}/?qq=complete"
-        log(f"[*] Đang mở link mã: {url}")
-        try:
-            driver.get(url)
-        except Exception as e:
-            log(f"[!] LỖI khi mở link mã {code}: {e}")
-            return False
+        driver.get(url)
         time.sleep(5)
-        
-        loaded_url = driver.current_url
-        if loaded_url and loaded_url.startswith("https://linkhuongdan.online"):
-            log(f"[+] Mở link mã thành công -> {loaded_url}")
-        else:
-            log(f"[!] Mở link mã có vẻ thất bại/redirect lạ -> {loaded_url}")
-        
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)
-        
-        log(f"[*] Đang OCR ảnh để tìm domain đích...")
         target_domain = extract_domain_from_image_ocr(driver)
         if not target_domain:
-            log(f"[-] KHÔNG tìm được domain từ OCR cho mã {code}, bỏ qua mã này")
             return False
-        
-        log(f"[+] OCR tìm thấy domain đích: {target_domain}")
-        
         driver.execute_script("window.open('');")
         driver.switch_to.window(driver.window_handles[-1])
-        log(f"[*] Đang chuyển hướng (mở tab mới) sang: {target_domain}")
-        try:
-            driver.get(target_domain)
-        except Exception as e:
-            log(f"[!] LỖI khi chuyển hướng sang {target_domain}: {e}")
-            try:
-                driver.close()
-                driver.switch_to.window(driver.window_handles[0])
-            except:
-                pass
-            return False
+        driver.get(target_domain)
         time.sleep(5)
-        
-        current_url = driver.current_url
-        if current_url and current_url != "about:blank" and current_url != "data:,":
-            log(f"[+] Chuyển hướng THÀNH CÔNG -> đang ở trang: {current_url}")
-        else:
-            log(f"[-] Chuyển hướng THẤT BẠI -> URL hiện tại: {current_url}")
-        
-        # Kiểm tra xem có bị chặn bởi trang captcha/challenge Cloudflare không
-        is_cf, cf_reason = detect_cloudflare_challenge(driver)
-        if is_cf:
-            log(f"[!] ⚠️ Phát hiện trang CAPTCHA/CHALLENGE Cloudflare ({cf_reason})")
-            log(f"[*] Đang đợi thử xem Cloudflare có tự vượt qua không (tối đa 8s)...")
-            cf_wait_start = time.time()
-            while time.time() - cf_wait_start < 8:
-                time.sleep(1)
-                still_cf, still_reason = detect_cloudflare_challenge(driver)
-                if not still_cf:
-                    log(f"[+] Cloudflare đã tự vượt qua, trang hiện tại: {driver.current_url}")
-                    is_cf = False
-                    break
-            if is_cf:
-                log(f"[-] ❌ Vẫn còn kẹt ở CAPTCHA Cloudflare sau khi đợi -> mã {code} khả năng KHÔNG lấy được nút "
-                    f"(cần giải captcha thủ công, script không tự vượt captcha)")
-        
-        log(f"[*] Đang tìm text/label VƯỢT MÃ (timeout {STEP1_TIMEOUT}s)...")
+        # Tìm nút
         start_time = time.time()
-        
         while time.time() - start_time < STEP1_TIMEOUT:
-            for i in range(8):
-                driver.execute_script(f"window.scrollTo(0, {i * 400});")
-                time.sleep(0.5)
-                
-                for pattern in BUTTON_PATTERNS:
-                    try:
-                        elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{pattern}')]")
-                        for el in elements:
-                            if el.is_displayed():
-                                log(f"[+] ✅ TÌM THẤY nút: '{pattern}' trên {current_url}")
-                                found = True
-                                break
-                        if found:
-                            break
-                    except:
-                        continue
-                
-                if found:
-                    break
-                
-                for pattern in BUTTON_PATTERNS:
-                    try:
-                        element = WebDriverWait(driver, 1).until(
-                            EC.presence_of_element_located((By.XPATH, f"//*[contains(text(), '{pattern}')]"))
-                        )
-                        if element and element.is_displayed():
-                            log(f"[+] ✅ TÌM THẤY nút: '{pattern}' trên {current_url}")
-                            found = True
-                            break
-                    except:
-                        continue
-                
-                if found:
-                    break
-            
-            if found:
-                break
+            for pattern in BUTTON_PATTERNS:
+                try:
+                    el = driver.find_element(By.XPATH, f"//*[contains(text(), '{pattern}')]")
+                    if el.is_displayed():
+                        found = True
+                        break
+                except:
+                    continue
+            if found: break
             time.sleep(1)
-        
         if found:
-            log(f"[+] ✅ Mã {code}: CÓ NÚT VƯỢT MÃ")
+            log(f"[+] Mã {code} CÓ NÚT")
             existing = load_codes()
             existing.add(code)
             save_codes(existing)
-        else:
-            reason_suffix = " (nguyên nhân: kẹt captcha Cloudflare)" if is_cf else ""
-            log(f"[-] ⏱️ Mã {code}: hết {STEP1_TIMEOUT}s không thấy nút, bỏ qua{reason_suffix}")
-        
-        try:
-            driver.close()
-            driver.switch_to.window(driver.window_handles[0])
-        except:
-            pass
-        
         return found
-        
     except Exception as e:
-        log(f"[!] Lỗi không xác định khi kiểm tra mã {code}: {e}")
+        log(f"[!] Lỗi check {code}: {e}")
         return False
     finally:
-        try:
-            driver.quit()
-        except:
-            pass
+        driver.quit()
 
-# =================== KIỂM TRA TẤT CẢ ===================
 def check_all_codes(new_codes, log_fn=None):
     log = log_fn or print
     codes_with = []
     codes_without = []
-    
     for i, code in enumerate(new_codes, 1):
-        log(f"[*] === Kiểm tra mã {i}/{len(new_codes)}: {code} ===")
-        if check_single_code(code, log_fn=log_fn):
+        log(f"[*] Kiểm tra mã {i}/{len(new_codes)}: {code}")
+        if check_single_code(code, log_fn=log):
             codes_with.append(code)
         else:
             codes_without.append(code)
-    
     return codes_with, codes_without
