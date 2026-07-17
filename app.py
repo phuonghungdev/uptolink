@@ -82,8 +82,15 @@ def save_proxy_config():
 
 @app.route('/api/test-proxy', methods=['POST'])
 def test_proxy():
+    from monitor import test_proxy_connection
+    success = test_proxy_connection(log_fn=log)
     config = load_config()
-    return jsonify({"status": "ok", "config": config, "message": "Proxy config loaded successfully"})
+    return jsonify({
+        "status": "ok", 
+        "config": config,
+        "proxy_alive": success,
+        "message": "Proxy HOẠT ĐỘNG" if success else "Proxy DIE hoặc timeout"
+    })
 
 @app.route('/api/check', methods=['POST'])
 def start_check():
@@ -152,17 +159,6 @@ def start_check():
     threading.Thread(target=run_check, daemon=True).start()
     return jsonify({"status": "started", "message": "Đã bắt đầu kiểm tra!"})
 
-@app.route('/api/test-proxy', methods=['POST'])
-def test_proxy():
-    from monitor import test_proxy_connection
-    success = test_proxy_connection(log_fn=log)
-    config = load_config()
-    return jsonify({
-        "status": "ok", 
-        "config": config,
-        "proxy_alive": success,
-        "message": "Proxy HOẠT ĐỘNG" if success else "Proxy DIE hoặc timeout"
-    })
 # =================== TELEGRAM ===================
 def send_telegram_report(new_codes, codes_with, codes_without):
     users = load_users()
